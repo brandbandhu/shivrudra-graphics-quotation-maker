@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shivrudra Graphics | Quotation & Invoice Manager</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="icon" type="image/svg+xml" href="./assets/logo.svg">
+  <link rel="stylesheet" href="./styles.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/lucide/0.453.0/umd/lucide.min.js" defer></script>
+  <script src="./config.js" defer></script>
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <div class="page-shell">
+    <header class="topbar">
+      <div class="brand-lockup">
+        <img src="./assets/logo.svg" alt="Shivrudra Graphics logo" class="brand-logo">
+        <div>
+          <p class="eyebrow">Quotation & Invoice Management</p>
+          <h1>Shivrudra Graphics Pvt Ltd</h1>
+          <p class="subtle" id="companyMetaLine">Fast quote desk for printing, branding, signage, and fabrication jobs.</p>
+        </div>
+      </div>
+
+      <div class="topbar-controls">
+        <div class="status-pill" id="syncBadge">
+          <span class="status-dot"></span>
+          <span id="syncBadgeText">Local mode</span>
+        </div>
+
+        <div class="role-switch" role="tablist" aria-label="User role switcher">
+          <button type="button" class="role-button active" data-role="Sales">Sales</button>
+          <button type="button" class="role-button" data-role="Admin">Admin</button>
+          <button type="button" class="role-button" data-role="Accounts">Accounts</button>
+        </div>
+
+        <button type="button" class="ghost-button" id="openSettingsButton">
+          <i data-lucide="sliders-horizontal"></i>
+          <span>Settings</span>
+        </button>
+      </div>
+    </header>
+
+    <main>
+      <section class="overview-band">
+        <div class="overview-heading">
+          <div>
+            <p class="eyebrow">Live Performance</p>
+            <h2>Sales desk dashboard</h2>
+          </div>
+          <div class="quick-actions">
+            <button type="button" class="ghost-button" id="newQuoteButton">
+              <i data-lucide="file-plus-2"></i>
+              <span>New quote</span>
+            </button>
+            <button type="button" class="ghost-button" id="duplicateCurrentButton">
+              <i data-lucide="copy-plus"></i>
+              <span>Duplicate current</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="stats-grid">
+          <article class="stat-card">
+            <p>Total quotes</p>
+            <strong id="statQuotes">0</strong>
+            <span id="statQuotesNote">Ready to start</span>
+          </article>
+          <article class="stat-card">
+            <p>Conversion rate</p>
+            <strong id="statConversion">0%</strong>
+            <span id="statConversionNote">Quotes to invoices</span>
+          </article>
+          <article class="stat-card">
+            <p>Revenue booked</p>
+            <strong id="statRevenue">Rs. 0</strong>
+            <span id="statRevenueNote">Invoices created</span>
+          </article>
+          <article class="stat-card">
+            <p>Follow-ups due</p>
+            <strong id="statFollowups">0</strong>
+            <span id="statFollowupsNote">Needs attention</span>
+          </article>
+        </div>
+      </section>
+
+      <section class="workspace">
+        <div class="wizard-surface">
+          <div class="wizard-topline">
+            <div>
+              <p class="eyebrow">Quote Builder</p>
+              <h2>Create a quotation in under a minute</h2>
+            </div>
+            <div class="inline-controls">
+              <label class="compact-field">
+                <span>Preset</span>
+                <select id="presetSelect">
+                  <option value="">Choose a preset</option>
+                </select>
+              </label>
+              <label class="compact-field">
+                <span>Quotation</span>
+                <select id="draftSelect">
+                  <option value="__new__">New quotation</option>
+                  <option value="__saved__">Saved draft</option>
+                </select>
+              </label>
+            </div>
+          </div>
+
+          <div class="progress-strip">
+            <div class="progress-bar">
+              <span id="progressFill"></span>
+            </div>
+            <span id="progressLabel">Step 1 of 8</span>
+          </div>
+
+          <ol class="stepper" id="stepper">
+            <li class="step-item active" data-step="1"><span>1</span><small>Client</small></li>
+            <li class="step-item" data-step="2"><span>2</span><small>Service</small></li>
+            <li class="step-item" data-step="3"><span>3</span><small>Job</small></li>
+            <li class="step-item" data-step="4"><span>4</span><small>Specs</small></li>
+            <li class="step-item" data-step="5"><span>5</span><small>Finish</small></li>
+            <li class="step-item" data-step="6"><span>6</span><small>Logistics</small></li>
+            <li class="step-item" data-step="7"><span>7</span><small>Pricing</small></li>
+            <li class="step-item" data-step="8"><span>8</span><small>Actions</small></li>
+          </ol>
+
+          <form id="quotationForm" novalidate>
+            <section class="form-step active" data-step="1">
+              <div class="section-heading">
+                <div>
+                  <h3>Client information</h3>
+                  <p>Sales can search repeat customers by mobile or name and fill the form instantly.</p>
+                </div>
+                <div class="assist-chip" id="repeatClientFlag">New client</div>
+              </div>
+
+              <div class="field-grid">
+                <label class="field">
+                  <span>Client Name</span>
+                  <input type="text" id="clientName" name="clientName" placeholder="e.g. Rohan Patil" list="clientNameOptions" required>
+                </label>
+                <label class="field">
+                  <span>Company Name</span>
+                  <input type="text" id="companyName" name="companyName" placeholder="e.g. Bright Foods Pvt Ltd" required>
+                </label>
+                <label class="field">
+                  <span>Mobile Number</span>
+                  <input type="tel" id="mobileNumber" name="mobileNumber" placeholder="10-digit mobile number" list="clientMobileOptions" required>
+                </label>
+                <label class="field">
+                  <span>Email</span>
+                  <input type="email" id="email" name="email" placeholder="client@company.com" required>
+                </label>
+                <label class="field">
+                  <span>GST Number</span>
+                  <input type="text" id="gstNumber" name="gstNumber" placeholder="Optional">
+                </label>
+                <label class="field">
+                  <span>Location</span>
+                  <input type="text" id="location" name="location" placeholder="City / area" required>
+                </label>
+                <label class="field field-span-2">
+                  <span>Industry</span>
+                  <select id="industry" name="industry" required>
+                    <option value="">Select industry</option>
+                  </select>
+                </label>
+              </div>
+
+              <datalist id="clientNameOptions"></datalist>
+              <datalist id="clientMobileOptions"></datalist>
+              <div class="helper-line" id="clientLookupHint">Recent client suggestions appear automatically.</div>
+            </section>
+
+            <section class="form-step" data-step="2">
+              <div class="section-heading">
+                <div>
+                  <h3>Service selection</h3>
+                  <p>Pick the service bucket first, then choose the exact product for accurate rates.</p>
+                </div>
+                <div class="assist-chip" id="productUnitChip">Waiting for selection</div>
+              </div>
+
+              <div class="field-grid">
+                <label class="field">
+                  <span>Category</span>
+                  <select id="category" name="category" required>
+                    <option value="">Select category</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Product</span>
+                  <select id="product" name="product" required>
+                    <option value="">Select product</option>
+                  </select>
+                </label>
+                <div class="product-callout field-span-2">
+                  <strong id="productHeadline">No product selected yet</strong>
+                  <p id="productDescription">Choose a product to reveal materials, unit type, and pricing logic.</p>
+                </div>
+              </div>
+            </section>
+
+            <section class="form-step" data-step="3">
+              <div class="section-heading">
+                <div>
+                  <h3>Job details</h3>
+                  <p>Capture the physical dimensions and quantity. Total area updates in real time.</p>
+                </div>
+                <div class="assist-chip" id="areaChip">0 sq.ft.</div>
+              </div>
+
+              <div class="field-grid">
+                <label class="field">
+                  <span>Width</span>
+                  <input type="number" min="0" step="0.01" id="width" name="width" placeholder="0.00" required>
+                </label>
+                <label class="field">
+                  <span>Height</span>
+                  <input type="number" min="0" step="0.01" id="height" name="height" placeholder="0.00" required>
+                </label>
+                <label class="field">
+                  <span>Quantity</span>
+                  <input type="number" min="1" step="1" id="quantity" name="quantity" placeholder="1" value="1" required>
+                </label>
+                <label class="field">
+                  <span>Dimension Unit</span>
+                  <select id="dimensionUnit" name="dimensionUnit" required>
+                    <option value="ft">Feet</option>
+                    <option value="inch">Inches</option>
+                    <option value="mm">Millimetres</option>
+                  </select>
+                </label>
+                <div class="summary-strip field-span-2">
+                  <div>
+                    <p>Total area</p>
+                    <strong id="areaSummaryValue">0 sq.ft.</strong>
+                  </div>
+                  <div>
+                    <p>Metric area</p>
+                    <strong id="metricAreaValue">0 sq.m.</strong>
+                  </div>
+                  <div>
+                    <p>Pricing basis</p>
+                    <strong id="pricingBasisValue">Select product</strong>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="form-step" data-step="4">
+              <div class="section-heading">
+                <div>
+                  <h3>Material and print specs</h3>
+                  <p>The pricing engine adapts by product, material, quality tier, print mode, and color type.</p>
+                </div>
+                <div class="assist-chip" id="materialChip">Material pending</div>
+              </div>
+
+              <div class="field-grid">
+                <label class="field">
+                  <span>Material Type</span>
+                  <select id="materialType" name="materialType" required>
+                    <option value="">Select material</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Quality</span>
+                  <select id="quality" name="quality" required>
+                    <option value="">Select quality</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Printing Type</span>
+                  <select id="printingType" name="printingType" required>
+                    <option value="">Select print type</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Color Type</span>
+                  <select id="colorType" name="colorType" required>
+                    <option value="">Select color type</option>
+                  </select>
+                </label>
+              </div>
+            </section>
+
+            <section class="form-step" data-step="5">
+              <div class="section-heading">
+                <div>
+                  <h3>Finishing options</h3>
+                  <p>Add production extras. The quote table and cost structure update instantly.</p>
+                </div>
+                <div class="assist-chip" id="finishingChip">No extras</div>
+              </div>
+
+              <div class="checkbox-grid" id="finishingGrid">
+                <label class="check-card">
+                  <input type="checkbox" name="finishing" value="Lamination">
+                  <span>Lamination</span>
+                </label>
+                <label class="check-card">
+                  <input type="checkbox" name="finishing" value="Mounting">
+                  <span>Mounting</span>
+                </label>
+                <label class="check-card">
+                  <input type="checkbox" name="finishing" value="Cutting">
+                  <span>Cutting</span>
+                </label>
+                <label class="check-card">
+                  <input type="checkbox" name="finishing" value="Framing">
+                  <span>Framing</span>
+                </label>
+                <label class="check-card">
+                  <input type="checkbox" name="finishing" value="Binding">
+                  <span>Binding</span>
+                </label>
+                <label class="check-card">
+                  <input type="checkbox" name="finishing" value="Eyelets">
+                  <span>Eyelets</span>
+                </label>
+              </div>
+            </section>
+
+            <section class="form-step" data-step="6">
+              <div class="section-heading">
+                <div>
+                  <h3>Installation and delivery</h3>
+                  <p>Capture urgency, shipping mode, and follow-up so the team can move without handoffs.</p>
+                </div>
+                <div class="assist-chip" id="timelineChip">Standard timeline</div>
+              </div>
+
+              <div class="field-grid">
+                <label class="field">
+                  <span>Installation required</span>
+                  <select id="installationRequired" name="installationRequired" required>
+                    <option value="">Select</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Delivery type</span>
+                  <select id="deliveryType" name="deliveryType" required>
+                    <option value="">Select delivery</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Urgency</span>
+                  <select id="urgency" name="urgency" required>
+                    <option value="">Select urgency</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Follow-up status</span>
+                  <select id="followUpStatus" name="followUpStatus">
+                    <option value="">Select status</option>
+                  </select>
+                </label>
+                <label class="field field-span-2">
+                  <span>Notes</span>
+                  <textarea id="notes" name="notes" rows="4" placeholder="Installation details, dispatch notes, client timeline, or internal handoff comments"></textarea>
+                </label>
+              </div>
+            </section>
+
+            <section class="form-step" data-step="7">
+              <div class="section-heading">
+                <div>
+                  <h3>Pricing preview</h3>
+                  <p>Rates are fetched from pricing data and adjusted using specs, delivery, urgency, and discount rules.</p>
+                </div>
+                <div class="assist-chip" id="marginChip">Margin hidden</div>
+              </div>
+
+              <div class="pricing-layout">
+                <div class="pricing-panel">
+                  <div class="pricing-row"><span>Base cost</span><strong id="previewBase">Rs. 0</strong></div>
+                  <div class="pricing-row"><span>Add-ons</span><strong id="previewAddons">Rs. 0</strong></div>
+                  <div class="pricing-row"><span>Installation</span><strong id="previewInstallation">Rs. 0</strong></div>
+                  <div class="pricing-row"><span>Delivery</span><strong id="previewDelivery">Rs. 0</strong></div>
+                  <div class="pricing-row total"><span>Subtotal</span><strong id="previewSubtotal">Rs. 0</strong></div>
+                </div>
+
+                <div class="field-grid">
+                  <label class="field">
+                    <span>Discount type</span>
+                    <select id="discountMode" name="discountMode">
+                      <option value="percent">Percentage (%)</option>
+                      <option value="amount">Flat amount (Rs.)</option>
+                    </select>
+                  </label>
+                  <label class="field">
+                    <span>Discount value</span>
+                    <input type="number" min="0" step="0.01" id="discountValue" name="discountValue" value="0">
+                  </label>
+                  <label class="field">
+                    <span>GST (%)</span>
+                    <input type="number" min="0" step="0.01" id="gstRate" name="gstRate" value="18">
+                  </label>
+                  <label class="field">
+                    <span>Prepared by</span>
+                    <input type="text" id="preparedBy" name="preparedBy" placeholder="Salesperson name">
+                  </label>
+                </div>
+
+                <div class="summary-strip">
+                  <div>
+                    <p>Discount</p>
+                    <strong id="previewDiscount">Rs. 0</strong>
+                  </div>
+                  <div>
+                    <p>GST</p>
+                    <strong id="previewGst">Rs. 0</strong>
+                  </div>
+                  <div>
+                    <p>Cost per unit</p>
+                    <strong id="previewCostPerUnit">Rs. 0</strong>
+                  </div>
+                  <div class="admin-only">
+                    <p>Profit margin</p>
+                    <strong id="previewMargin">0%</strong>
+                  </div>
+                </div>
+                <p class="inline-warning" id="discountWarning"></p>
+              </div>
+            </section>
+
+            <section class="form-step" data-step="8">
+              <div class="section-heading">
+                <div>
+                  <h3>Generate and share</h3>
+                  <p>Quotes are saved first, then the branded PDF is generated for download and reuse.</p>
+                </div>
+                <div class="assist-chip" id="quoteStateChip">Ready to save</div>
+              </div>
+
+              <div class="action-grid">
+                <button type="button" class="action-card primary-action" id="generateQuoteButton">
+                  <i data-lucide="file-down"></i>
+                  <strong>Generate quotation</strong>
+                  <span>Save the quote, create a branded PDF, and mark it generated.</span>
+                </button>
+                <button type="button" class="action-card" id="saveDraftButton">
+                  <i data-lucide="save"></i>
+                  <strong>Save draft</strong>
+                  <span>Keep the current work safe without finalizing pricing.</span>
+                </button>
+                <button type="button" class="action-card" id="convertInvoiceButton">
+                  <i data-lucide="receipt-text"></i>
+                  <strong>Convert to invoice</strong>
+                  <span>Lock pricing, create invoice data, and download the invoice PDF.</span>
+                </button>
+                <button type="button" class="action-card highlight-action" id="downloadQuotationButton">
+                  <i data-lucide="download"></i>
+                  <strong>Download quotation</strong>
+                  <span>Download the latest saved quotation PDF again without regenerating it.</span>
+                </button>
+                <button type="button" class="action-card highlight-action" id="downloadInvoiceButton">
+                  <i data-lucide="file-stack"></i>
+                  <strong>Download invoice</strong>
+                  <span>Download the latest saved invoice PDF again whenever you need it.</span>
+                </button>
+                <button type="button" class="action-card" id="shareWhatsappButton">
+                  <i data-lucide="message-circle-more"></i>
+                  <strong>Share on WhatsApp</strong>
+                  <span>Send a ready-made message with quote details after generation.</span>
+                </button>
+              </div>
+
+              <div class="summary-strip">
+                <div>
+                  <p>Quote ID</p>
+                  <strong id="latestQuoteId">Pending</strong>
+                </div>
+                <div>
+                  <p>Invoice ID</p>
+                  <strong id="latestInvoiceId">Pending</strong>
+                </div>
+                <div>
+                  <p>Final amount</p>
+                  <strong id="latestFinalAmount">Rs. 0</strong>
+                </div>
+                <div>
+                  <p>Sync status</p>
+                  <strong id="latestSyncStatus">Local only</strong>
+                </div>
+              </div>
+            </section>
+          </form>
+
+          <div class="wizard-footer">
+            <button type="button" class="ghost-button" id="prevStepButton">
+              <i data-lucide="arrow-left"></i>
+              <span>Previous</span>
+            </button>
+            <div class="footer-actions">
+              <button type="button" class="ghost-button" id="quickSaveButton">
+                <i data-lucide="save"></i>
+                <span>Quick save</span>
+              </button>
+              <button type="button" class="primary-button" id="nextStepButton">
+                <span>Next step</span>
+                <i data-lucide="arrow-right"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <aside class="summary-rail">
+          <section class="rail-section">
+            <div class="rail-heading">
+              <div>
+                <p class="eyebrow">Live quote</p>
+                <h3>Commercial snapshot</h3>
+              </div>
+              <span class="assist-chip" id="quoteValidityChip">Validity: 7 days</span>
+            </div>
+
+            <div class="quote-preview">
+              <div class="preview-row">
+                <span>Client</span>
+                <strong id="previewClientName">Not filled</strong>
+              </div>
+              <div class="preview-row">
+                <span>Job</span>
+                <strong id="previewProductName">Select product</strong>
+              </div>
+              <div class="preview-row">
+                <span>Material</span>
+                <strong id="previewMaterialName">Select material</strong>
+              </div>
+              <div class="preview-row">
+                <span>Specs</span>
+                <strong id="previewSpecs">0 x 0 x 1</strong>
+              </div>
+              <div class="preview-row emphasis">
+                <span>Final amount</span>
+                <strong id="previewGrandTotal">Rs. 0</strong>
+              </div>
+            </div>
+
+            <div class="breakdown-list" id="breakdownList"></div>
+          </section>
+
+          <section class="rail-section">
+            <div class="rail-heading">
+              <div>
+                <p class="eyebrow">Client reuse</p>
+                <h3>Recent customers</h3>
+              </div>
+            </div>
+            <div class="tag-list" id="recentClients"></div>
+          </section>
+
+          <section class="rail-section admin-only">
+            <div class="rail-heading">
+              <div>
+                <p class="eyebrow">Admin view</p>
+                <h3>Profit watch</h3>
+              </div>
+            </div>
+            <div class="profit-panel">
+              <div class="preview-row">
+                <span>Total cost</span>
+                <strong id="profitCost">Rs. 0</strong>
+              </div>
+              <div class="preview-row">
+                <span>Net sales</span>
+                <strong id="profitNetSales">Rs. 0</strong>
+              </div>
+              <div class="preview-row">
+                <span>Estimated profit</span>
+                <strong id="profitValue">Rs. 0</strong>
+              </div>
+            </div>
+          </section>
+        </aside>
+      </section>
+
+      <section class="records-band">
+        <div class="records-heading">
+          <div>
+            <p class="eyebrow">Activity</p>
+            <h2>Quotations and invoices</h2>
+          </div>
+          <div class="records-controls">
+            <label class="compact-field">
+              <span>View</span>
+              <select id="recordTypeFilter">
+                <option value="quotations">Quotations</option>
+                <option value="invoices">Invoices</option>
+              </select>
+            </label>
+            <label class="compact-field">
+              <span>Search</span>
+              <input type="search" id="recordSearch" placeholder="Client, product, ID">
+            </label>
+          </div>
+        </div>
+
+        <div class="table-shell">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Date</th>
+                <th>Client</th>
+                <th>Product</th>
+                <th>Status</th>
+                <th>Amount</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="recordsTableBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="settingsDialog">
+    <form method="dialog" class="dialog-form" id="settingsForm">
+      <div class="dialog-header">
+        <div>
+          <p class="eyebrow">Settings</p>
+          <h2>Business and integration details</h2>
+        </div>
+        <button type="button" class="ghost-button icon-only" id="closeSettingsButton" aria-label="Close settings">
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+
+      <div class="field-grid">
+        <label class="field field-span-2">
+          <span>Google Apps Script Web App URL</span>
+          <input type="url" id="settingsAppsScriptUrl" name="settingsAppsScriptUrl" placeholder="https://script.google.com/macros/s/.../exec">
+        </label>
+        <label class="field">
+          <span>Company address</span>
+          <input type="text" id="settingsAddress" name="settingsAddress">
+        </label>
+        <label class="field">
+          <span>Company phone</span>
+          <input type="text" id="settingsPhone" name="settingsPhone">
+        </label>
+        <label class="field">
+          <span>Company email</span>
+          <input type="email" id="settingsCompanyEmail" name="settingsCompanyEmail">
+        </label>
+        <label class="field">
+          <span>Company GST</span>
+          <input type="text" id="settingsCompanyGst" name="settingsCompanyGst">
+        </label>
+        <label class="field">
+          <span>Prepared by default</span>
+          <input type="text" id="settingsPreparedBy" name="settingsPreparedBy">
+        </label>
+        <label class="field">
+          <span>Quotation validity (days)</span>
+          <input type="number" min="1" step="1" id="settingsValidityDays" name="settingsValidityDays">
+        </label>
+      </div>
+
+      <div class="dialog-actions">
+        <button type="button" class="ghost-button" id="refreshPricingButton">
+          <i data-lucide="refresh-cw"></i>
+          <span>Refresh pricing</span>
+        </button>
+        <div class="footer-actions">
+          <button type="button" class="ghost-button" id="cancelSettingsButton">Cancel</button>
+          <button type="submit" class="primary-button">Save settings</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toast-stack" id="toastStack" aria-live="polite" aria-atomic="true"></div>
+</body>
+</html>
