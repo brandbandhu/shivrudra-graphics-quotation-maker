@@ -42,12 +42,12 @@
     applySettingsToForm();
     resetQuote();
     refreshPricingMaster();
-      renderRole();
-      renderAll();
+    renderRole();
+    renderAll();
     if (window.lucide && typeof window.lucide.createIcons === "function") {
       window.lucide.createIcons();
     }
-    toast("Workspace ready", "The quotation desk is loaded. We can quote locally now and sync to Google Sheets when the Apps Script URL is added.", "success");
+    toast("Quotation maker ready", "Working in local mode. Add the Apps Script URL later if you want Google Sheets sync.", "success");
   }
 
   function buildConfig() {
@@ -124,12 +124,17 @@
       });
     });
 
-    els.prevStepButton.addEventListener("click", () => goToStep(state.currentStep - 1));
-    els.nextStepButton.addEventListener("click", () => {
-      if (validateCurrentStep()) {
-        goToStep(state.currentStep + 1);
-      }
-    });
+    if (els.prevStepButton) {
+      els.prevStepButton.addEventListener("click", () => goToStep(state.currentStep - 1));
+    }
+
+    if (els.nextStepButton) {
+      els.nextStepButton.addEventListener("click", () => {
+        if (validateCurrentStep()) {
+          goToStep(state.currentStep + 1);
+        }
+      });
+    }
 
     document.querySelectorAll(".step-item").forEach((item) => {
       item.addEventListener("click", () => {
@@ -143,7 +148,9 @@
     els.presetSelect.addEventListener("change", handlePresetSelection);
     els.draftSelect.addEventListener("change", handleDraftSelection);
 
-    els.quickSaveButton.addEventListener("click", saveDraft);
+    if (els.quickSaveButton) {
+      els.quickSaveButton.addEventListener("click", saveDraft);
+    }
     els.saveDraftButton.addEventListener("click", saveDraft);
     els.generateQuoteButton.addEventListener("click", () => {
       generateQuotation();
@@ -172,7 +179,7 @@
       renderAll();
     });
 
-    ["clientName", "mobileNumber", "email"].forEach((id) => {
+    ["clientName", "mobileNumber"].forEach((id) => {
       document.getElementById(id).addEventListener("blur", tryAutofillClient);
     });
   }
@@ -218,7 +225,12 @@
     els.settingsCompanyGst.value = state.config.company.gstNumber || "";
     els.settingsPreparedBy.value = state.config.defaults.preparedBy || "";
     els.settingsValidityDays.value = String(state.config.defaults.quotationValidityDays || 7);
-    els.companyMetaLine.textContent = `${state.config.company.address} | ${state.config.company.phone} | ${state.config.company.email}`;
+    const companyMeta = [
+      state.config.company.address,
+      state.config.company.phone,
+      state.config.company.email
+    ].filter(Boolean);
+    els.companyMetaLine.textContent = companyMeta.join(" | ") || "Print, signage, and branding quotations in one screen.";
   }
 
   async function refreshPricingMaster(announce) {
@@ -268,9 +280,8 @@
     const target = event.target;
 
     if (target.id === "category") {
-      populateProductOptions(target.value);
-      document.getElementById("product").value = "";
-      populateMaterialOptions("");
+      const productName = populateProductOptions(target.value, state.quote?.product || "");
+      populateMaterialOptions(productName);
     }
 
     if (target.id === "product") {
@@ -281,16 +292,20 @@
       target.closest(".check-card").classList.toggle("active", target.checked);
     }
 
+    syncMinimalFormDefaults();
     updateQuoteFromForm();
     renderAll();
   }
 
-  function populateProductOptions(category) {
+  function populateProductOptions(category, preferredProduct) {
     const select = document.getElementById("product");
     const products = state.config.catalog
       .filter((item) => item.category === category)
       .map((item) => item.product);
     fillSelectOptions(select, products, "Select product");
+    const nextProduct = products.includes(preferredProduct) ? preferredProduct : (products[0] || "");
+    select.value = nextProduct;
+    return nextProduct;
   }
 
   function populateMaterialOptions(productName) {
@@ -465,8 +480,7 @@
     document.getElementById("location").value = state.quote.location || "";
     document.getElementById("industry").value = state.quote.industry || "";
     document.getElementById("category").value = state.quote.category || "";
-    populateProductOptions(state.quote.category || "");
-    document.getElementById("product").value = state.quote.product || "";
+    populateProductOptions(state.quote.category || "", state.quote.product || "");
     populateMaterialOptions(state.quote.product || "");
     document.getElementById("width").value = state.quote.width || "";
     document.getElementById("height").value = state.quote.height || "";
@@ -491,24 +505,88 @@
       input.closest(".check-card").classList.toggle("active", input.checked);
     });
 
+    syncMinimalFormDefaults();
     updateQuoteFromForm();
   }
 
+  function syncMinimalFormDefaults() {
+    const productName = fieldValue("product") || state.quote?.product || "";
+    syncMaterialSelection(productName);
+    ensureFieldValue("quality", state.quote?.quality || "Economy");
+    ensureFieldValue("printingType", state.quote?.printingType || "Eco-solvent");
+    ensureFieldValue("colorType", state.quote?.colorType || "Color");
+    ensureFieldValue("installationRequired", state.quote?.installationRequired || "No");
+    ensureFieldValue("deliveryType", state.quote?.deliveryType || "Pickup");
+    ensureFieldValue("urgency", state.quote?.urgency || "Normal");
+    ensureFieldValue("followUpStatus", state.quote?.followUpStatus || "Fresh Lead");
+    ensureFieldValue("preparedBy", state.quote?.preparedBy || state.config.defaults.preparedBy || "Sales Desk");
+    syncDimensionVisibility(productName);
+  }
+
+  function syncMaterialSelection(productName) {
+    const select = document.getElementById("materialType");
+    if (!select) {
+      return;
+    }
+
+    const product = getCatalogProduct(productName);
+    const materials = product ? product.materials : [];
+    const currentOptions = Array.from(select.options)
+      .slice(1)
+      .map((option) => option.value);
+
+    if (currentOptions.join("|") !== materials.join("|")) {
+      fillSelectOptions(select, materials, "Select material");
+    }
+
+    if (!materials.length) {
+      select.value = "";
+      return;
+    }
+
+    const preferredValue = select.value || state.quote?.materialType || "";
+    select.value = materials.includes(preferredValue) ? preferredValue : materials[0];
+  }
+
+  function syncDimensionVisibility(productName) {
+    const product = getCatalogProduct(productName);
+    const needsDimensions = !product || product.unitType === "area";
+
+    ["widthField", "heightField", "unitField"].forEach((id) => {
+      const field = document.getElementById(id);
+      if (field) {
+        field.classList.toggle("is-hidden", !needsDimensions);
+      }
+    });
+
+    ["width", "height", "dimensionUnit"].forEach((id) => {
+      const field = document.getElementById(id);
+      if (field) {
+        field.required = needsDimensions;
+      }
+    });
+
+    const quantityLabel = document.getElementById("quantityLabel");
+    if (quantityLabel) {
+      quantityLabel.textContent = product?.unitType === "page" ? "Pages" : "Quantity";
+    }
+  }
+
+  function ensureFieldValue(id, value) {
+    const field = document.getElementById(id);
+    if (!field) {
+      return;
+    }
+
+    if (!String(field.value || "").trim()) {
+      field.value = value;
+    }
+  }
+
   function goToStep(stepNumber) {
-    const clamped = Math.min(8, Math.max(1, stepNumber));
+    const totalSteps = document.querySelectorAll(".form-step").length || 1;
+    const clamped = Math.min(totalSteps, Math.max(1, stepNumber));
     state.currentStep = clamped;
-    document.querySelectorAll(".form-step").forEach((step) => {
-      step.classList.toggle("active", Number(step.dataset.step) === clamped);
-    });
-    document.querySelectorAll(".step-item").forEach((item) => {
-      const itemStep = Number(item.dataset.step);
-      item.classList.toggle("active", itemStep === clamped);
-      item.classList.toggle("completed", itemStep < clamped);
-    });
-    els.progressFill.style.width = `${(clamped / 8) * 100}%`;
-    els.progressLabel.textContent = `Step ${clamped} of 8`;
-    els.prevStepButton.disabled = clamped === 1;
-    els.nextStepButton.disabled = clamped === 8;
   }
 
   function validateCurrentStep() {
@@ -521,7 +599,7 @@
     const firstInvalid = requiredFields.find((field) => !String(field.value).trim());
     if (firstInvalid) {
       firstInvalid.focus();
-      toast("Missing details", "Please fill the required fields in this step before moving ahead.", "warning");
+      toast("Missing details", "Please fill the required fields before continuing.", "warning");
       return false;
     }
 
@@ -529,6 +607,7 @@
     const pricing = calculatePricing();
     if (pricing.discountExceeded) {
       toast("Discount exceeds limit", pricing.discountMessage, "warning");
+      document.getElementById("discountValue").focus();
       return false;
     }
 
@@ -767,7 +846,7 @@
     const pricing = calculatePricing();
     if (pricing.discountExceeded) {
       toast("Discount exceeds limit", pricing.discountMessage, "warning");
-      goToStep(7);
+      document.getElementById("discountValue").focus();
       return;
     }
 
@@ -795,7 +874,7 @@
         return null;
       }
     } else {
-      record.id = record.id || generateId("QT");
+      record.id = generateId("QT");
       record.syncState = "Local only";
     }
 
@@ -915,14 +994,15 @@
   }
 
   function validateAllSteps() {
-    for (let step = 1; step <= 8; step += 1) {
+    const totalSteps = document.querySelectorAll(".form-step").length || 1;
+    for (let step = 1; step <= totalSteps; step += 1) {
       state.currentStep = step;
       if (!validateCurrentStep()) {
         goToStep(step);
         return false;
       }
     }
-    goToStep(8);
+    goToStep(totalSteps);
     return true;
   }
 
@@ -973,12 +1053,16 @@
     const companyDetailLines = [];
     const companyAddress = String(company.address || "").trim();
     const companyContactParts = [company.phone, company.email].map((value) => String(value || "").trim()).filter(Boolean);
+    const companyWebsite = String(company.website || "").trim();
 
     if (companyAddress) {
       companyDetailLines.push(companyAddress);
     }
     if (companyContactParts.length) {
       companyDetailLines.push(companyContactParts.join(" | "));
+    }
+    if (companyWebsite) {
+      companyDetailLines.push(companyWebsite);
     }
     if (companyGst) {
       companyDetailLines.push(`GST: ${companyGst}`);
@@ -1036,13 +1120,23 @@
 
     const clientBoxY = dividerY + 16;
     const clientMaxWidth = contentWidth - (boxPadding * 2);
-    const clientLines = flattenLines([
-      record.clientName || "-",
-      record.companyName || "-",
-      `${record.mobileNumber || "-"} | ${record.email || "-"}`,
-      `${record.location || "-"} | ${record.industry || "-"}`,
-      `GST: ${record.gstNumber || "Not provided"}`
-    ], clientMaxWidth);
+    const clientDetailLines = [record.clientName || "-"];
+    const companyLine = String(record.companyName || "").trim();
+    const contactLine = [record.mobileNumber, record.email].map((value) => String(value || "").trim()).filter(Boolean).join(" | ");
+    const locationLine = [record.location, record.industry].map((value) => String(value || "").trim()).filter(Boolean).join(" | ");
+
+    if (companyLine) {
+      clientDetailLines.push(companyLine);
+    }
+    if (contactLine) {
+      clientDetailLines.push(contactLine);
+    }
+    if (locationLine) {
+      clientDetailLines.push(locationLine);
+    }
+    clientDetailLines.push(`GST: ${record.gstNumber || "Not provided"}`);
+
+    const clientLines = flattenLines(clientDetailLines, clientMaxWidth);
     const clientBoxHeight = Math.max(96, 34 + (clientLines.length * lineGap));
 
     doc.setFillColor(248, 250, 252);
@@ -1288,6 +1382,7 @@
   }
 
   function renderAll() {
+    syncMinimalFormDefaults();
     updateQuoteFromForm();
     state.quotePricing = calculatePricing();
     renderProgress();
@@ -1303,8 +1398,12 @@
   }
 
   function renderProgress() {
-    els.progressFill.style.width = `${(state.currentStep / 8) * 100}%`;
-    els.progressLabel.textContent = `Step ${state.currentStep} of 8`;
+    if (!els.progressFill || !els.progressLabel) {
+      return;
+    }
+
+    els.progressFill.style.width = "100%";
+    els.progressLabel.textContent = "Single-page form";
   }
 
   function renderProductHints() {
@@ -1315,8 +1414,8 @@
 
     if (!product) {
       productHeadline.textContent = "No product selected yet";
-      productDescription.textContent = "Choose a product to reveal materials, unit type, and pricing logic.";
-      productUnitChip.textContent = "Waiting for selection";
+      productDescription.textContent = "Choose the service, add quantity, and enter size only when needed.";
+      productUnitChip.textContent = "Pricing rule will appear here";
       return;
     }
 
@@ -1334,19 +1433,47 @@
   }
 
   function renderChips() {
-    document.getElementById("repeatClientFlag").textContent = state.clients.some((client) => client.mobileNumber === state.quote.mobileNumber)
-      ? "Repeat client"
-      : "New client";
-    document.getElementById("areaChip").textContent = `${formatNumber(state.quotePricing.areaSqft, 2)} sq.ft.`;
-    document.getElementById("materialChip").textContent = state.quote.materialType || "Material pending";
-    document.getElementById("finishingChip").textContent = state.quote.finishing.length ? `${state.quote.finishing.length} extra(s)` : "No extras";
-    document.getElementById("timelineChip").textContent = state.quote.urgency === "Express" ? "Express timeline" : "Standard timeline";
-    document.getElementById("marginChip").textContent = state.role === "Admin"
-      ? `${formatNumber(state.quotePricing.margin, 1)}% margin`
-      : "Margin hidden";
-    document.getElementById("quoteStateChip").textContent = state.lastSavedQuote?.id
-      ? `${state.lastSavedQuote.id} ready`
-      : "Ready to save";
+    const repeatClientFlag = document.getElementById("repeatClientFlag");
+    if (repeatClientFlag) {
+      repeatClientFlag.textContent = state.clients.some((client) => client.mobileNumber === state.quote.mobileNumber)
+        ? "Repeat client"
+        : "New client";
+    }
+
+    const areaChip = document.getElementById("areaChip");
+    if (areaChip) {
+      areaChip.textContent = buildMeasureBadge(state.quotePricing);
+    }
+
+    const materialChip = document.getElementById("materialChip");
+    if (materialChip) {
+      materialChip.textContent = state.quote.materialType || "Material pending";
+    }
+
+    const finishingChip = document.getElementById("finishingChip");
+    if (finishingChip) {
+      finishingChip.textContent = state.quote.finishing.length ? `${state.quote.finishing.length} selected` : "No extras";
+    }
+
+    const timelineChip = document.getElementById("timelineChip");
+    if (timelineChip) {
+      timelineChip.textContent = state.quote.urgency === "Express" ? "Express" : "Standard";
+    }
+
+    const marginChip = document.getElementById("marginChip");
+    if (marginChip) {
+      marginChip.textContent = state.role === "Admin"
+        ? `${formatNumber(state.quotePricing.margin, 1)}% margin`
+        : "Margin hidden";
+    }
+
+    const quoteStateChip = document.getElementById("quoteStateChip");
+    if (quoteStateChip) {
+      quoteStateChip.textContent = state.lastSavedQuote?.id
+        ? `${state.lastSavedQuote.id} ready`
+        : "Ready to save";
+    }
+
     els.quoteValidityChip.textContent = `Validity: ${state.config.defaults.quotationValidityDays || 7} days`;
   }
 
@@ -1359,7 +1486,7 @@
     document.getElementById("previewSubtotal").textContent = formatCurrency(pricing.subtotal);
     document.getElementById("previewDiscount").textContent = formatCurrency(pricing.discount);
     document.getElementById("previewGst").textContent = formatCurrency(pricing.gstAmount);
-    document.getElementById("previewCostPerUnit").textContent = formatCurrency(pricing.costPerUnit);
+    document.getElementById("previewCostPerUnit").textContent = `Per unit ${formatCurrency(pricing.costPerUnit)}`;
     document.getElementById("previewMargin").textContent = `${formatNumber(pricing.margin, 1)}%`;
     document.getElementById("discountWarning").textContent = pricing.discountExceeded ? pricing.discountMessage : "";
   }
@@ -1368,11 +1495,37 @@
     const pricing = state.quotePricing;
     document.getElementById("previewClientName").textContent = state.quote.clientName || "Not filled";
     document.getElementById("previewProductName").textContent = state.quote.product || "Select product";
-    document.getElementById("previewMaterialName").textContent = state.quote.materialType || "Select material";
-    document.getElementById("previewSpecs").textContent = `${displayNumber(state.quote.width)} x ${displayNumber(state.quote.height)} ${state.quote.dimensionUnit || "ft"} x ${state.quote.quantity || 1}`;
+    document.getElementById("previewMaterialName").textContent = state.quote.materialType || "Auto selected";
+    document.getElementById("previewSpecs").textContent = buildSpecsSummary(pricing);
     document.getElementById("previewGrandTotal").textContent = formatCurrency(pricing.finalAmount);
-    document.getElementById("areaSummaryValue").textContent = `${formatNumber(pricing.areaSqft, 2)} sq.ft.`;
-    document.getElementById("metricAreaValue").textContent = `${formatNumber(pricing.areaSqm, 2)} sq.m.`;
+
+    const primaryMeasureLabel = document.getElementById("primaryMeasureLabel");
+    const secondaryMeasureBlock = document.getElementById("secondaryMeasureBlock");
+    const secondaryMeasureLabel = document.getElementById("secondaryMeasureLabel");
+
+    if (pricing.unitType === "area") {
+      if (primaryMeasureLabel) {
+        primaryMeasureLabel.textContent = "Total area";
+      }
+      document.getElementById("areaSummaryValue").textContent = `${formatNumber(pricing.areaSqft, 2)} sq.ft.`;
+      if (secondaryMeasureLabel) {
+        secondaryMeasureLabel.textContent = "Metric area";
+      }
+      document.getElementById("metricAreaValue").textContent = `${formatNumber(pricing.areaSqm, 2)} sq.m.`;
+      if (secondaryMeasureBlock) {
+        secondaryMeasureBlock.classList.remove("is-hidden");
+      }
+    } else {
+      if (primaryMeasureLabel) {
+        primaryMeasureLabel.textContent = humanizeUnitType(pricing.unitType);
+      }
+      document.getElementById("areaSummaryValue").textContent = formatMeasureCount(pricing.unitType, state.quote.quantity);
+      document.getElementById("metricAreaValue").textContent = "";
+      if (secondaryMeasureBlock) {
+        secondaryMeasureBlock.classList.add("is-hidden");
+      }
+    }
+
     document.getElementById("pricingBasisValue").textContent = humanizeUnitType(pricing.unitType);
     document.getElementById("profitCost").textContent = formatCurrency(pricing.totalCost);
     document.getElementById("profitNetSales").textContent = formatCurrency(pricing.taxable);
@@ -1519,7 +1672,12 @@
     document.getElementById("latestQuoteId").textContent = state.lastSavedQuote?.id || state.quote.id || "Pending";
     document.getElementById("latestInvoiceId").textContent = state.lastSavedInvoice?.id || state.quote.invoiceId || "Pending";
     document.getElementById("latestFinalAmount").textContent = formatCurrency(state.quotePricing.finalAmount);
-    document.getElementById("latestSyncStatus").textContent = state.lastSavedInvoice?.syncState || state.lastSavedQuote?.syncState || state.quote.syncState || "Local only";
+    const latestSyncState = state.lastSavedInvoice?.syncState || state.lastSavedQuote?.syncState || state.quote.syncState || "Local only";
+    document.getElementById("latestSyncStatus").textContent = latestSyncState;
+    const latestSyncMirror = document.getElementById("latestSyncStatusMirror");
+    if (latestSyncMirror) {
+      latestSyncMirror.textContent = latestSyncState;
+    }
   }
 
   function renderRole() {
@@ -1656,14 +1814,10 @@
       throw new Error("Apps Script URL missing");
     }
     const search = new URLSearchParams({ action, ...params });
-    const response = await fetch(`${url}?${search.toString()}`, {
-      method: "GET"
+    return requestJson(`${url}?${search.toString()}`, {
+      method: "GET",
+      cache: "no-store"
     });
-    if (!response.ok) {
-      throw new Error(`GET ${action} failed with ${response.status}`);
-    }
-    const text = await response.text();
-    return JSON.parse(text);
   }
 
   async function apiPost(action, payload) {
@@ -1671,18 +1825,13 @@
     if (!url) {
       throw new Error("Apps Script URL missing");
     }
-    const response = await fetch(url, {
+    return requestJson(url, {
       method: "POST",
       headers: {
         "Content-Type": "text/plain;charset=utf-8"
       },
       body: JSON.stringify({ action, payload })
     });
-    if (!response.ok) {
-      throw new Error(`POST ${action} failed with ${response.status}`);
-    }
-    const text = await response.text();
-    return JSON.parse(text);
   }
 
   function getAppsScriptUrl() {
@@ -1778,8 +1927,68 @@
     return "Per job";
   }
 
+  function formatMeasureCount(unitType, quantity) {
+    const count = Math.max(1, toNumber(quantity) || 1);
+    if (unitType === "page") {
+      return `${formatNumber(count, 0)} page${count === 1 ? "" : "s"}`;
+    }
+    if (unitType === "unit") {
+      return `${formatNumber(count, 0)} unit${count === 1 ? "" : "s"}`;
+    }
+    return "Per job";
+  }
+
+  function buildMeasureBadge(pricing) {
+    if (pricing.unitType === "area") {
+      return `${formatNumber(pricing.areaSqft, 2)} sq.ft.`;
+    }
+    return formatMeasureCount(pricing.unitType, state.quote.quantity);
+  }
+
+  function buildSpecsSummary(pricing) {
+    if (pricing.unitType === "area") {
+      return `${displayNumber(state.quote.width)} x ${displayNumber(state.quote.height)} ${state.quote.dimensionUnit || "ft"} x ${state.quote.quantity || 1}`;
+    }
+    return formatMeasureCount(pricing.unitType, state.quote.quantity);
+  }
+
   function fieldValue(id) {
-    return document.getElementById(id).value;
+    const element = document.getElementById(id);
+    return element ? element.value : "";
+  }
+
+  async function requestJson(url, options) {
+    const maxAttempts = 3;
+    let lastError = null;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        const response = await fetch(url, options);
+        if (!response.ok) {
+          throw new Error(`${options.method || "GET"} failed with ${response.status}`);
+        }
+        const text = await response.text();
+        const data = JSON.parse(text);
+        if (data && data.status === "error") {
+          throw new Error(data.message || "Apps Script returned an error");
+        }
+        return data;
+      } catch (error) {
+        lastError = error;
+        if (attempt >= maxAttempts) {
+          break;
+        }
+        await wait(300 * attempt);
+      }
+    }
+
+    throw lastError || new Error("Request failed");
+  }
+
+  function wait(ms) {
+    return new Promise((resolve) => {
+      window.setTimeout(resolve, ms);
+    });
   }
 
   function toNumber(value) {
